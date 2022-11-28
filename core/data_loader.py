@@ -54,7 +54,7 @@ class ReferenceDataset(data.Dataset):
         self.transform = transform
 
     def _make_dataset(self, root):
-        domains = os.listdir(root)
+        domains = [ dirname for dirname in os.listdir(root) if not dirname.startswith(".")]  #lzk Fix bug: 当图片目录中有隐藏文件时需要过滤，否则被当作域，训练时会报错。
         fnames, fnames2, labels = [], [], []
         for idx, domain in enumerate(sorted(domains)):
             class_dir = os.path.join(root, domain)

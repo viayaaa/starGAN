@@ -18,6 +18,7 @@ import torch
 from core.data_loader import get_train_loader
 from core.data_loader import get_test_loader
 from core.solver import Solver
+from core.logutils import logger
 
 
 def str2bool(v):
@@ -30,7 +31,7 @@ def subdirs(dname):
 
 
 def main(args):
-    print(args)
+    logger.info(args)
     cudnn.benchmark = True
     torch.manual_seed(args.seed)
 
@@ -116,7 +117,7 @@ if __name__ == '__main__':
                         help='Number of total iterations')
     parser.add_argument('--resume_iter', type=int, default=0,
                         help='Iterations to resume training/testing')
-    parser.add_argument('--batch_size', type=int, default=8,
+    parser.add_argument('--batch_size', type=int, default=4,    #lzk 将8改到4
                         help='Batch size for training')
     parser.add_argument('--val_batch_size', type=int, default=32,
                         help='Batch size for validation')

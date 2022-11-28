@@ -23,7 +23,7 @@ import torch.nn as nn
 import torch.nn.functional as F
 import torchvision
 import torchvision.utils as vutils
-
+from core.logutils import logger
 
 def save_json(json_file, filename):
     with open(filename, 'w') as f:
@@ -35,7 +35,7 @@ def print_network(network, name):
     for p in network.parameters():
         num_params += p.numel()
     # print(network)
-    print("Number of parameters of %s: %i" % (name, num_params))
+    logger.info("Number of parameters of %s: %i" % (name, num_params))
 
 
 def he_init(module):

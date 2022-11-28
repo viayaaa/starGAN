@@ -24,6 +24,8 @@ from core.data_loader import InputFetcher
 import core.utils as utils
 from metrics.eval import calculate_metrics
 
+from core.logutils import logger
+
 
 class Solver(nn.Module):
     def __init__(self, args):
@@ -61,7 +63,7 @@ class Solver(nn.Module):
         for name, network in self.named_children():
             # Do not initialize the FAN parameters
             if ('ema' not in name) and ('fan' not in name):
-                print('Initializing %s...' % name)
+                logger.info('Initializing %s...' % name)
                 network.apply(utils.he_init)
 
     def _save_checkpoint(self, step):
@@ -94,7 +96,7 @@ class Solver(nn.Module):
         # remember the initial value of ds weight
         initial_lambda_ds = args.lambda_ds
 
-        print('Start training...')
+        logger.info('Start training...')
         start_time = time.time()
         for i in range(args.resume_iter, args.total_iters):
             # fetch images and labels
@@ -154,7 +156,7 @@ class Solver(nn.Module):
                         all_losses[prefix + key] = value
                 all_losses['G/lambda_ds'] = args.lambda_ds
                 log += ' '.join(['%s: [%.4f]' % (key, value) for key, value in all_losses.items()])
-                print(log)
+                logger.info(log)
 
             # generate images for debugging
             if (i+1) % args.sample_every == 0:
@@ -169,6 +171,8 @@ class Solver(nn.Module):
             if (i+1) % args.eval_every == 0:
                 calculate_metrics(nets_ema, args, i+1, mode='latent')
                 calculate_metrics(nets_ema, args, i+1, mode='reference')
+        
+        logger.info('finish training...')
 
     @torch.no_grad()
     def sample(self, loaders):
@@ -181,11 +185,11 @@ class Solver(nn.Module):
         ref = next(InputFetcher(loaders.ref, None, args.latent_dim, 'test'))
 
         fname = ospj(args.result_dir, 'reference.jpg')
-        print('Working on {}...'.format(fname))
+        logger.info('Working on {}...'.format(fname))
         utils.translate_using_reference(nets_ema, args, src.x, ref.x, ref.y, fname)
 
         fname = ospj(args.result_dir, 'video_ref.mp4')
-        print('Working on {}...'.format(fname))
+        logger.info('Working on {}...'.format(fname))
         utils.video_ref(nets_ema, args, src.x, ref.x, ref.y, fname)
 
     @torch.no_grad()
