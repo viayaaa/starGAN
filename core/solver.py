@@ -23,9 +23,7 @@ from core.checkpoint import CheckpointIO
 from core.data_loader import InputFetcher
 import core.utils as utils
 from metrics.eval import calculate_metrics
-
-from core.logutils import logger
-
+from .replay_pool import ReplayPool
 
 class Solver(nn.Module):
     def __init__(self, args):
@@ -63,14 +61,18 @@ class Solver(nn.Module):
         for name, network in self.named_children():
             # Do not initialize the FAN parameters
             if ('ema' not in name) and ('fan' not in name):
-                logger.info('Initializing %s...' % name)
+                print('Initializing %s...' % name)
                 network.apply(utils.he_init)
+        self.pool_1 = ReplayPool(10)
+        self.pool_2 = ReplayPool(10)
 
     def _save_checkpoint(self, step):
+        step = 100
         for ckptio in self.ckptios:
             ckptio.save(step)
 
     def _load_checkpoint(self, step):
+        step = 100
         for ckptio in self.ckptios:
             ckptio.load(step)
 
@@ -96,7 +98,7 @@ class Solver(nn.Module):
         # remember the initial value of ds weight
         initial_lambda_ds = args.lambda_ds
 
-        logger.info('Start training...')
+        print('Start training...')
         start_time = time.time()
         for i in range(args.resume_iter, args.total_iters):
             # fetch images and labels
@@ -109,13 +111,13 @@ class Solver(nn.Module):
 
             # train the discriminator
             d_loss, d_losses_latent = compute_d_loss(
-                nets, args, x_real, y_org, y_trg, z_trg=z_trg, masks=masks)
+                self.pool_1, nets, args, x_real, y_org, y_trg, z_trg=z_trg, masks=masks)
             self._reset_grad()
             d_loss.backward()
             optims.discriminator.step()
 
             d_loss, d_losses_ref = compute_d_loss(
-                nets, args, x_real, y_org, y_trg, x_ref=x_ref, masks=masks)
+                self.pool_2, nets, args, x_real, y_org, y_trg, x_ref=x_ref, masks=masks)
             self._reset_grad()
             d_loss.backward()
             optims.discriminator.step()
@@ -156,7 +158,7 @@ class Solver(nn.Module):
                         all_losses[prefix + key] = value
                 all_losses['G/lambda_ds'] = args.lambda_ds
                 log += ' '.join(['%s: [%.4f]' % (key, value) for key, value in all_losses.items()])
-                logger.info(log)
+                print(log)
 
             # generate images for debugging
             if (i+1) % args.sample_every == 0:
@@ -167,12 +169,15 @@ class Solver(nn.Module):
             if (i+1) % args.save_every == 0:
                 self._save_checkpoint(step=i+1)
 
+                if os.path.exists("/content"):
+                    print("Saving on GDrive...")
+                    import subprocess
+                    subprocess.run(f"cp --force -R ./expr/ /content/drive/MyDrive/modulated_stargan_ckpt/", shell=True, check=True)
+
             # compute FID and LPIPS if necessary
             if (i+1) % args.eval_every == 0:
                 calculate_metrics(nets_ema, args, i+1, mode='latent')
                 calculate_metrics(nets_ema, args, i+1, mode='reference')
-        
-        logger.info('finish training...')
 
     @torch.no_grad()
     def sample(self, loaders):
@@ -185,11 +190,11 @@ class Solver(nn.Module):
         ref = next(InputFetcher(loaders.ref, None, args.latent_dim, 'test'))
 
         fname = ospj(args.result_dir, 'reference.jpg')
-        logger.info('Working on {}...'.format(fname))
+        print('Working on {}...'.format(fname))
         utils.translate_using_reference(nets_ema, args, src.x, ref.x, ref.y, fname)
 
         fname = ospj(args.result_dir, 'video_ref.mp4')
-        logger.info('Working on {}...'.format(fname))
+        print('Working on {}...'.format(fname))
         utils.video_ref(nets_ema, args, src.x, ref.x, ref.y, fname)
 
     @torch.no_grad()
@@ -202,7 +207,7 @@ class Solver(nn.Module):
         calculate_metrics(nets_ema, args, step=resume_iter, mode='reference')
 
 
-def compute_d_loss(nets, args, x_real, y_org, y_trg, z_trg=None, x_ref=None, masks=None):
+def compute_d_loss(pool, nets, args, x_real, y_org, y_trg, z_trg=None, x_ref=None, masks=None):
     assert (z_trg is None) != (x_ref is None)
     # with real images
     x_real.requires_grad_()
@@ -218,7 +223,8 @@ def compute_d_loss(nets, args, x_real, y_org, y_trg, z_trg=None, x_ref=None, mas
             s_trg = nets.style_encoder(x_ref, y_trg)
 
         x_fake = nets.generator(x_real, s_trg, masks=masks)
-    out = nets.discriminator(x_fake, y_trg)
+        fake_query = pool.query({"x_fake": x_fake, "y_trg": y_trg})
+    out = nets.discriminator(fake_query["x_fake"], fake_query["y_trg"])
     loss_fake = adv_loss(out, 0)
 
     loss = loss_real + loss_fake + args.lambda_reg * loss_reg

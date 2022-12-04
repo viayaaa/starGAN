@@ -23,7 +23,7 @@ import torch.nn as nn
 import torch.nn.functional as F
 import torchvision
 import torchvision.utils as vutils
-from core.logutils import logger
+
 
 def save_json(json_file, filename):
     with open(filename, 'w') as f:
@@ -35,7 +35,7 @@ def print_network(network, name):
     for p in network.parameters():
         num_params += p.numel()
     # print(network)
-    logger.info("Number of parameters of %s: %i" % (name, num_params))
+    print("Number of parameters of %s: %i" % (name, num_params))
 
 
 def he_init(module):
@@ -130,17 +130,17 @@ def debug_image(nets, args, inputs, step):
     filename = ospj(args.sample_dir, '%06d_cycle_consistency.jpg' % (step))
     translate_and_reconstruct(nets, args, x_src, y_src, x_ref, y_ref, filename)
 
-    # latent-guided image synthesis
-    y_trg_list = [torch.tensor(y).repeat(N).to(device)
-                  for y in range(min(args.num_domains, 5))]
-    z_trg_list = torch.randn(args.num_outs_per_domain, 1, args.latent_dim).repeat(1, N, 1).to(device)
-    for psi in [0.5, 0.7, 1.0]:
-        filename = ospj(args.sample_dir, '%06d_latent_psi_%.1f.jpg' % (step, psi))
-        translate_using_latent(nets, args, x_src, y_trg_list, z_trg_list, psi, filename)
+#     # latent-guided image synthesis
+#     y_trg_list = [torch.tensor(y).repeat(N).to(device)
+#                   for y in range(min(args.num_domains, 5))]
+#     z_trg_list = torch.randn(args.num_outs_per_domain, 1, args.latent_dim).repeat(1, N, 1).to(device)
+#     for psi in [0.5, 0.7, 1.0]:
+#         filename = ospj(args.sample_dir, '%06d_latent_psi_%.1f.jpg' % (step, psi))
+#         translate_using_latent(nets, args, x_src, y_trg_list, z_trg_list, psi, filename)
 
-    # reference-guided image synthesis
-    filename = ospj(args.sample_dir, '%06d_reference.jpg' % (step))
-    translate_using_reference(nets, args, x_src, x_ref, y_ref, filename)
+#     # reference-guided image synthesis
+#     filename = ospj(args.sample_dir, '%06d_reference.jpg' % (step))
+#     translate_using_reference(nets, args, x_src, x_ref, y_ref, filename)
 
 
 # ======================= #

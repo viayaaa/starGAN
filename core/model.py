@@ -64,61 +64,38 @@ class ResBlk(nn.Module):
         return x / math.sqrt(2)  # unit variance
 
 
-class AdaIN(nn.Module):
-    def __init__(self, style_dim, num_features):
-        super().__init__()
-        self.norm = nn.InstanceNorm2d(num_features, affine=False)
-        self.fc = nn.Linear(style_dim, num_features*2)
+from .modulated_convolution import Conv2DMod, RGBBlock
 
-    def forward(self, x, s):
-        h = self.fc(s)
-        h = h.view(h.size(0), h.size(1), 1, 1)
-        gamma, beta = torch.chunk(h, chunks=2, dim=1)
-        return (1 + gamma) * self.norm(x) + beta
-
-
-class AdainResBlk(nn.Module):
-    def __init__(self, dim_in, dim_out, style_dim=64, w_hpf=0,
+class GenResBlk(nn.Module):
+    def __init__(self, dim_in, dim_out, style_dim=64, fade_num_channels=4, fade_num_hidden=32,
                  actv=nn.LeakyReLU(0.2), upsample=False):
         super().__init__()
-        self.w_hpf = w_hpf
         self.actv = actv
         self.upsample = upsample
-        self.learned_sc = dim_in != dim_out
-        self._build_weights(dim_in, dim_out, style_dim)
-
-    def _build_weights(self, dim_in, dim_out, style_dim=64):
-        self.conv1 = nn.Conv2d(dim_in, dim_out, 3, 1, 1)
-        self.conv2 = nn.Conv2d(dim_out, dim_out, 3, 1, 1)
-        self.norm1 = AdaIN(style_dim, dim_in)
-        self.norm2 = AdaIN(style_dim, dim_out)
-        if self.learned_sc:
+        self.needSkipConvolution = dim_in != dim_out
+        self.conv1 = Conv2DMod(dim_in, dim_out, 3, stride=1, dilation=1)
+        self.conv2 = Conv2DMod(dim_out, dim_out, 3, stride=1, dilation=1)
+        self.style1 = nn.Linear(style_dim, dim_in)
+        self.style2 = nn.Linear(style_dim, dim_out)
+        if self.needSkipConvolution:
             self.conv1x1 = nn.Conv2d(dim_in, dim_out, 1, 1, 0, bias=False)
+        self.toRGB = RGBBlock(style_dim, dim_out, upsample, 3)
 
-    def _shortcut(self, x):
+    def forward(self, x, rgb, s):
         if self.upsample:
-            x = F.interpolate(x, scale_factor=2, mode='nearest')
-        if self.learned_sc:
-            x = self.conv1x1(x)
-        return x
-
-    def _residual(self, x, s):
-        x = self.norm1(x, s)
+            x = F.interpolate(x, scale_factor=2, mode='bilinear', align_corners=False)
+        if self.needSkipConvolution:
+            x_ = self.conv1x1(x)
+        else:
+            x_ = x
+        s1 = self.style1(s)
+        x = self.conv1(x, s1)
         x = self.actv(x)
-        if self.upsample:
-            x = F.interpolate(x, scale_factor=2, mode='nearest')
-        x = self.conv1(x)
-        x = self.norm2(x, s)
-        x = self.actv(x)
-        x = self.conv2(x)
-        return x
-
-    def forward(self, x, s):
-        out = self._residual(x, s)
-        if self.w_hpf == 0:
-            out = (out + self._shortcut(x)) / math.sqrt(2)
-        return out
-
+        s2 = self.style2(s)
+        x = self.conv2(x, s2)
+        x = self.actv(x + x_)
+        rgb = self.toRGB(x, rgb, s)
+        return x, rgb
 
 class HighPass(nn.Module):
     def __init__(self, w_hpf, device):
@@ -126,7 +103,7 @@ class HighPass(nn.Module):
         self.register_buffer('filter',
                              torch.tensor([[-1, -1, -1],
                                            [-1, 8., -1],
-                                           [-1, -1, -1]]) / w_hpf)
+                                           [-1, -1, -1]]).to(device) / w_hpf)
 
     def forward(self, x):
         filter = self.filter.unsqueeze(0).unsqueeze(1).repeat(x.size(1), 1, 1, 1)
@@ -155,8 +132,7 @@ class Generator(nn.Module):
             self.encode.append(
                 ResBlk(dim_in, dim_out, normalize=True, downsample=True))
             self.decode.insert(
-                0, AdainResBlk(dim_out, dim_in, style_dim,
-                               w_hpf=w_hpf, upsample=True))  # stack-like
+                0, GenResBlk(dim_out, dim_in, style_dim, upsample=True))
             dim_in = dim_out
 
         # bottleneck blocks
@@ -164,7 +140,7 @@ class Generator(nn.Module):
             self.encode.append(
                 ResBlk(dim_out, dim_out, normalize=True))
             self.decode.insert(
-                0, AdainResBlk(dim_out, dim_out, style_dim, w_hpf=w_hpf))
+                0, GenResBlk(dim_out, dim_out, style_dim))
 
         if w_hpf > 0:
             device = torch.device(
@@ -178,13 +154,14 @@ class Generator(nn.Module):
             if (masks is not None) and (x.size(2) in [32, 64, 128]):
                 cache[x.size(2)] = x
             x = block(x)
+        rgb = None
         for block in self.decode:
-            x = block(x, s)
+            x, rgb = block(x, rgb, s)
             if (masks is not None) and (x.size(2) in [32, 64, 128]):
                 mask = masks[0] if x.size(2) in [32] else masks[1]
                 mask = F.interpolate(mask, size=x.size(2), mode='bilinear')
                 x = x + self.hpf(mask * cache[x.size(2)])
-        return self.to_rgb(x)
+        return rgb
 
 
 class MappingNetwork(nn.Module):

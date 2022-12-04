@@ -20,19 +20,18 @@ from metrics.fid import calculate_fid_given_paths
 from metrics.lpips import calculate_lpips_given_images
 from core.data_loader import get_eval_loader
 from core import utils
-from core.logutils import logger
 
 
 @torch.no_grad()
 def calculate_metrics(nets, args, step, mode):
-    logger.info('Calculating evaluation metrics...')
+    print('Calculating evaluation metrics...')
     assert mode in ['latent', 'reference']
     device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
 
     domains = os.listdir(args.val_img_dir)
     domains.sort()
     num_domains = len(domains)
-    logger.info('Number of domains: %d' % num_domains)
+    print('Number of domains: %d' % num_domains)
 
     lpips_dict = OrderedDict()
     for trg_idx, trg_domain in enumerate(domains):
@@ -59,7 +58,7 @@ def calculate_metrics(nets, args, step, mode):
             os.makedirs(path_fake)
 
             lpips_values = []
-            logger.info('Generating images and calculating LPIPS for %s...' % task)
+            print('Generating images and calculating LPIPS for %s...' % task)
             for i, x_src in enumerate(tqdm(loader_src, total=len(loader_src))):
                 N = x_src.size(0)
                 x_src = x_src.to(device)
@@ -121,7 +120,7 @@ def calculate_metrics(nets, args, step, mode):
 
 
 def calculate_fid_for_all_tasks(args, domains, step, mode):
-    logger.info('Calculating FID for all tasks...')
+    print('Calculating FID for all tasks...')
     fid_values = OrderedDict()
     for trg_domain in domains:
         src_domains = [x for x in domains if x != trg_domain]
@@ -130,7 +129,7 @@ def calculate_fid_for_all_tasks(args, domains, step, mode):
             task = '%s2%s' % (src_domain, trg_domain)
             path_real = os.path.join(args.train_img_dir, trg_domain)
             path_fake = os.path.join(args.eval_dir, task)
-            logger.info('Calculating FID for %s...' % task)
+            print('Calculating FID for %s...' % task)
             fid_value = calculate_fid_given_paths(
                 paths=[path_real, path_fake],
                 img_size=args.img_size,
