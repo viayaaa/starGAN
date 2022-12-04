@@ -36,6 +36,7 @@ class CheckpointIO(object):
 
     def load(self, step):
         fname = self.fname_template.format(step)
+        print("fname:",fname)
         assert os.path.exists(fname), fname + ' does not exist!'
         print('Loading checkpoint from %s...' % fname)
         if torch.cuda.is_available():

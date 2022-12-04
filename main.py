@@ -18,8 +18,9 @@ import torch
 from core.data_loader import get_train_loader
 from core.data_loader import get_test_loader
 from core.solver import Solver
-from core.logutils import logger
 
+import warnings
+warnings.filterwarnings("ignore")
 
 def str2bool(v):
     return v.lower() in ('true')
@@ -31,7 +32,7 @@ def subdirs(dname):
 
 
 def main(args):
-    logger.info(args)
+    print(args)
     cudnn.benchmark = True
     torch.manual_seed(args.seed)
 
@@ -113,11 +114,11 @@ if __name__ == '__main__':
     # training arguments
     parser.add_argument('--randcrop_prob', type=float, default=0.5,
                         help='Probabilty of using random-resized cropping')
-    parser.add_argument('--total_iters', type=int, default=100000,
+    parser.add_argument('--total_iters', type=int, default=10000,
                         help='Number of total iterations')
     parser.add_argument('--resume_iter', type=int, default=0,
                         help='Iterations to resume training/testing')
-    parser.add_argument('--batch_size', type=int, default=4,    #lzk 将8改到4
+    parser.add_argument('--batch_size', type=int, default=8,
                         help='Batch size for training')
     parser.add_argument('--val_batch_size', type=int, default=32,
                         help='Batch size for validation')
@@ -138,7 +139,8 @@ if __name__ == '__main__':
     parser.add_argument('--mode', type=str, required=True,
                         choices=['train', 'sample', 'eval', 'align'],
                         help='This argument is used in solver')
-    parser.add_argument('--num_workers', type=int, default=4,
+    #parser.add_argument('--num_workers', type=int, default=4,
+    parser.add_argument('--num_workers', type=int, default=0,
                         help='Number of workers used in DataLoader')
     parser.add_argument('--seed', type=int, default=777,
                         help='Seed for random number generator')
